@@ -1,7 +1,8 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, Send, ListTodo } from "lucide-react";
+import { Mic, Send } from "lucide-react";
 import TopBar from "@/components/TopBar";
+import BottomNav from "@/components/BottomNav";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +27,7 @@ const Assistant = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-hero">
+    <div className="min-h-screen bg-background pb-24">
       <TopBar onOpenAuthModal={() => {}} user={{ name: "User" }} />
       
       <div className="container mx-auto px-4 pt-24 pb-8">
@@ -101,18 +102,9 @@ const Assistant = () => {
             </div>
           </div>
         </div>
-
-        {/* Your Tasks Button */}
-        <div className="fixed bottom-8 right-8">
-          <Button
-            size="lg"
-            className="bg-gradient-success hover:opacity-90 shadow-lg rounded-full px-6"
-          >
-            <ListTodo className="w-5 h-5 mr-2" />
-            Your Tasks
-          </Button>
-        </div>
       </div>
+
+      <BottomNav />
     </div>
   );
 };
