@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import TopBar from "@/components/TopBar";
 import BottomNav from "@/components/BottomNav";
+import CircularMenu from "@/components/CircularMenu";
 
 // Mock data - in real app this would come from backend
 const mockStats = {
@@ -299,6 +300,7 @@ const Dashboard = () => {
         </div>
       </div>
 
+      <CircularMenu />
       <BottomNav />
     </div>
   );

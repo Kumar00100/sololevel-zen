@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import TopBar from "@/components/TopBar";
 import BottomNav from "@/components/BottomNav";
+import CircularMenu from "@/components/CircularMenu";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -243,6 +244,7 @@ const Tasks = () => {
         </div>
       </div>
 
+      <CircularMenu />
       <BottomNav />
     </div>
   );
