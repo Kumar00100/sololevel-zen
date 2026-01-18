@@ -2,11 +2,14 @@ import { NavLink, useLocation } from "react-router-dom";
 import { Home, MessageCircle, Calendar, LayoutDashboard, ListTodo } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+import { Dumbbell } from "lucide-react";
+
 const navItems = [
   { path: "/", icon: Home, label: "Home" },
   { path: "/assistant", icon: MessageCircle, label: "Assistant" },
   { path: "/planning", icon: Calendar, label: "Plan" },
   { path: "/tasks", icon: ListTodo, label: "Tasks" },
+  { path: "/workout", icon: Dumbbell, label: "Workout" },
   { path: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
 ];
 
