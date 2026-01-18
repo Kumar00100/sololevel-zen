@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Mic, Send } from "lucide-react";
 import TopBar from "@/components/TopBar";
 import BottomNav from "@/components/BottomNav";
+import CircularMenu from "@/components/CircularMenu";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -104,6 +105,7 @@ const Assistant = () => {
         </div>
       </div>
 
+      <CircularMenu />
       <BottomNav />
     </div>
   );

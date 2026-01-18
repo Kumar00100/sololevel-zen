@@ -21,6 +21,7 @@ import {
 import { CalendarIcon, Plus, Clock, Target, Trash2, Zap } from "lucide-react";
 import TopBar from "@/components/TopBar";
 import BottomNav from "@/components/BottomNav";
+import CircularMenu from "@/components/CircularMenu";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -300,6 +301,7 @@ const Planning = () => {
         </div>
       </div>
 
+      <CircularMenu />
       <BottomNav />
     </div>
   );
