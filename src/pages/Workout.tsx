@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Camera, Play, Pause, RotateCcw, Dumbbell, Zap, Timer, Trophy } from "lucide-react";
+import { Camera, Play, Pause, RotateCcw, Dumbbell, Zap, Timer, Trophy, FlipHorizontal2, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,8 +31,12 @@ const Workout = () => {
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>(initialExercises);
   const [timer, setTimer] = useState(0);
+  const [isMirrored, setIsMirrored] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Timer effect
   useEffect(() => {
@@ -62,21 +66,56 @@ const Workout = () => {
     return () => clearInterval(countInterval);
   }, [isTracking, selectedExercise]);
 
-  const startCamera = async () => {
+  const startCamera = async (facing: "user" | "environment" = facingMode) => {
     try {
+      // Stop existing stream first
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user" },
+        video: { 
+          facingMode: facing,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
         audio: false,
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
         setCameraActive(true);
+        setFacingMode(facing);
       }
     } catch (error) {
       console.error("Error accessing camera:", error);
     }
   };
+
+  const flipCamera = () => {
+    const newFacing = facingMode === "user" ? "environment" : "user";
+    startCamera(newFacing);
+  };
+
+  const toggleFullscreen = () => {
+    if (!isFullscreen && containerRef.current) {
+      if (containerRef.current.requestFullscreen) {
+        containerRef.current.requestFullscreen();
+      }
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
+    setIsFullscreen(!isFullscreen);
+  };
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -134,10 +173,19 @@ const Workout = () => {
       </div>
 
       <div className="container mx-auto px-4 py-6 space-y-6">
-        {/* Camera Section */}
-        <Card className="overflow-hidden">
+        {/* Camera Mirror Section */}
+        <Card className={cn(
+          "overflow-hidden transition-all duration-300",
+          isFullscreen && "fixed inset-0 z-50 rounded-none"
+        )}>
           <CardContent className="p-0">
-            <div className="relative aspect-video bg-muted flex items-center justify-center">
+            <div 
+              ref={containerRef}
+              className={cn(
+                "relative bg-black flex items-center justify-center",
+                isFullscreen ? "h-screen" : "aspect-[3/4] sm:aspect-video"
+              )}
+            >
               {cameraActive ? (
                 <>
                   <video
@@ -145,56 +193,138 @@ const Workout = () => {
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-full object-cover"
+                    className={cn(
+                      "w-full h-full object-cover",
+                      isMirrored && "scale-x-[-1]"
+                    )}
                   />
-                  {/* Overlay UI */}
+                  
+                  {/* Mirror Frame Overlay */}
                   <div className="absolute inset-0 pointer-events-none">
+                    {/* Decorative corner frames */}
+                    <div className="absolute top-2 left-2 w-12 h-12 border-l-2 border-t-2 border-white/40 rounded-tl-lg" />
+                    <div className="absolute top-2 right-2 w-12 h-12 border-r-2 border-t-2 border-white/40 rounded-tr-lg" />
+                    <div className="absolute bottom-2 left-2 w-12 h-12 border-l-2 border-b-2 border-white/40 rounded-bl-lg" />
+                    <div className="absolute bottom-2 right-2 w-12 h-12 border-r-2 border-b-2 border-white/40 rounded-br-lg" />
+                  </div>
+
+                  {/* Top Controls Bar */}
+                  <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
                     {/* Timer */}
-                    <div className="absolute top-4 left-4 bg-background/80 backdrop-blur-sm px-3 py-2 rounded-xl flex items-center gap-2">
+                    <div className="bg-black/60 backdrop-blur-sm px-3 py-2 rounded-xl flex items-center gap-2">
                       <Timer className="w-4 h-4 text-primary" />
-                      <span className="font-mono font-bold">{formatTime(timer)}</span>
+                      <span className="font-mono font-bold text-white">{formatTime(timer)}</span>
                     </div>
 
-                    {/* Exercise Counter */}
-                    {currentExercise && (
-                      <div className="absolute top-4 right-4 bg-background/80 backdrop-blur-sm px-4 py-3 rounded-xl text-center">
-                        <div className="text-3xl font-bold text-primary">
-                          {currentExercise.count}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          / {currentExercise.target}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Current Exercise */}
-                    {currentExercise && (
-                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-background/80 backdrop-blur-sm px-4 py-2 rounded-full flex items-center gap-2">
-                        <span className="text-xl">{currentExercise.icon}</span>
-                        <span className="font-medium">{currentExercise.name}</span>
-                        {isTracking && (
-                          <Badge className="bg-success text-white animate-pulse">
-                            Tracking
-                          </Badge>
-                        )}
-                      </div>
-                    )}
+                    {/* Camera Controls */}
+                    <div className="flex gap-2">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="w-10 h-10 bg-black/60 backdrop-blur-sm text-white hover:bg-black/80 rounded-xl"
+                        onClick={() => setIsMirrored(!isMirrored)}
+                      >
+                        <FlipHorizontal2 className="w-5 h-5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="w-10 h-10 bg-black/60 backdrop-blur-sm text-white hover:bg-black/80 rounded-xl"
+                        onClick={flipCamera}
+                      >
+                        <Camera className="w-5 h-5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="w-10 h-10 bg-black/60 backdrop-blur-sm text-white hover:bg-black/80 rounded-xl"
+                        onClick={toggleFullscreen}
+                      >
+                        {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+                      </Button>
+                    </div>
                   </div>
+
+                  {/* Exercise Counter - Large Display */}
+                  {currentExercise && (
+                    <div className="absolute top-20 right-4 bg-black/60 backdrop-blur-sm px-5 py-4 rounded-2xl text-center">
+                      <div className="text-5xl font-bold text-white">
+                        {currentExercise.count}
+                      </div>
+                      <div className="text-sm text-white/60">
+                        of {currentExercise.target}
+                      </div>
+                      <Progress 
+                        value={(currentExercise.count / currentExercise.target) * 100} 
+                        className="h-1.5 mt-2 bg-white/20"
+                      />
+                    </div>
+                  )}
+
+                  {/* Current Exercise Badge */}
+                  {currentExercise && (
+                    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-sm px-5 py-3 rounded-full flex items-center gap-3">
+                      <span className="text-2xl">{currentExercise.icon}</span>
+                      <span className="font-semibold text-white text-lg">{currentExercise.name}</span>
+                      {isTracking && (
+                        <span className="flex items-center gap-1 bg-success/80 text-white text-sm px-2 py-1 rounded-full">
+                          <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                          LIVE
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Bottom Controls - In Fullscreen */}
+                  {isFullscreen && (
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-4">
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        onClick={stopCamera}
+                        className="rounded-full bg-black/60 border-white/20 text-white hover:bg-black/80"
+                      >
+                        <Camera className="w-5 h-5 mr-2" />
+                        Stop
+                      </Button>
+                      <Button
+                        size="lg"
+                        onClick={toggleTracking}
+                        disabled={!selectedExercise}
+                        className={cn(
+                          "rounded-full w-16 h-16",
+                          isTracking
+                            ? "bg-destructive hover:bg-destructive/90"
+                            : "bg-gradient-primary"
+                        )}
+                      >
+                        {isTracking ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        onClick={resetExercise}
+                        className="rounded-full bg-black/60 border-white/20 text-white hover:bg-black/80"
+                      >
+                        <RotateCcw className="w-5 h-5" />
+                      </Button>
+                    </div>
+                  )}
                 </>
               ) : (
-                <div className="text-center space-y-4">
-                  <div className="w-20 h-20 mx-auto bg-muted-foreground/10 rounded-full flex items-center justify-center">
-                    <Camera className="w-10 h-10 text-muted-foreground" />
+                <div className="text-center space-y-4 p-8">
+                  <div className="w-24 h-24 mx-auto bg-white/10 rounded-full flex items-center justify-center">
+                    <Camera className="w-12 h-12 text-white/60" />
                   </div>
                   <div>
-                    <p className="font-medium">Camera not active</p>
-                    <p className="text-sm text-muted-foreground">
-                      Enable camera to start AI workout tracking
+                    <p className="font-semibold text-white text-lg">Mirror Mode</p>
+                    <p className="text-sm text-white/60">
+                      See yourself while working out
                     </p>
                   </div>
-                  <Button onClick={startCamera} className="bg-gradient-primary">
+                  <Button onClick={() => startCamera()} className="bg-gradient-primary shadow-glow">
                     <Camera className="w-4 h-4 mr-2" />
-                    Enable Camera
+                    Start Mirror
                   </Button>
                 </div>
               )}
