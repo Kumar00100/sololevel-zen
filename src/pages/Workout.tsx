@@ -27,6 +27,8 @@ const initialExercises: Exercise[] = [
 
 const Workout = () => {
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>(initialExercises);
@@ -67,10 +69,18 @@ const Workout = () => {
   }, [isTracking, selectedExercise]);
 
   const startCamera = async (facing: "user" | "environment" = facingMode) => {
+    setCameraLoading(true);
+    setCameraError(null);
+    
     try {
       // Stop existing stream first
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+      }
+
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Camera not supported in this browser or context");
       }
       
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -81,14 +91,33 @@ const Workout = () => {
         },
         audio: false,
       });
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
-        setCameraActive(true);
+        
+        // Wait for video to be ready
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(console.error);
+          setCameraActive(true);
+          setCameraLoading(false);
+        };
+        
         setFacingMode(facing);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error accessing camera:", error);
+      setCameraLoading(false);
+      
+      if (error.name === "NotAllowedError") {
+        setCameraError("Camera permission denied. Please allow camera access.");
+      } else if (error.name === "NotFoundError") {
+        setCameraError("No camera found on this device.");
+      } else if (error.name === "NotReadableError") {
+        setCameraError("Camera is already in use by another app.");
+      } else {
+        setCameraError("Camera access blocked in preview. Try opening in new tab or on your phone.");
+      }
     }
   };
 
@@ -313,19 +342,61 @@ const Workout = () => {
                 </>
               ) : (
                 <div className="text-center space-y-4 p-8">
-                  <div className="w-24 h-24 mx-auto bg-white/10 rounded-full flex items-center justify-center">
-                    <Camera className="w-12 h-12 text-white/60" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-white text-lg">Mirror Mode</p>
-                    <p className="text-sm text-white/60">
-                      See yourself while working out
-                    </p>
-                  </div>
-                  <Button onClick={() => startCamera()} className="bg-gradient-primary shadow-glow">
-                    <Camera className="w-4 h-4 mr-2" />
-                    Start Mirror
-                  </Button>
+                  {cameraLoading ? (
+                    <>
+                      <div className="w-24 h-24 mx-auto bg-white/10 rounded-full flex items-center justify-center animate-pulse">
+                        <Camera className="w-12 h-12 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-white text-lg">Starting Camera...</p>
+                        <p className="text-sm text-white/60">
+                          Please allow camera access when prompted
+                        </p>
+                      </div>
+                    </>
+                  ) : cameraError ? (
+                    <>
+                      <div className="w-24 h-24 mx-auto bg-destructive/20 rounded-full flex items-center justify-center">
+                        <Camera className="w-12 h-12 text-destructive" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-white text-lg">Camera Error</p>
+                        <p className="text-sm text-white/60 max-w-xs mx-auto">
+                          {cameraError}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Button onClick={() => startCamera()} className="bg-gradient-primary shadow-glow">
+                          <Camera className="w-4 h-4 mr-2" />
+                          Try Again
+                        </Button>
+                        <a 
+                          href={window.location.href} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary underline"
+                        >
+                          Open in new tab for camera access
+                        </a>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-24 h-24 mx-auto bg-white/10 rounded-full flex items-center justify-center">
+                        <Camera className="w-12 h-12 text-white/60" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-white text-lg">Mirror Mode</p>
+                        <p className="text-sm text-white/60">
+                          See yourself while working out
+                        </p>
+                      </div>
+                      <Button onClick={() => startCamera()} className="bg-gradient-primary shadow-glow">
+                        <Camera className="w-4 h-4 mr-2" />
+                        Start Mirror
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
