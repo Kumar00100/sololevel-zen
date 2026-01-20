@@ -236,20 +236,29 @@ const Workout = () => {
       });
       
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+        const video = videoRef.current;
+        video.srcObject = stream;
         streamRef.current = stream;
-        
-        videoRef.current.onloadedmetadata = () => {
-          const video = videoRef.current!;
-          setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
-          video.play().catch(console.error);
-          setCameraActive(true);
-          setCameraLoading(false);
-          
-          // Initialize pose detection
-          initializePose();
+
+        // Mark active immediately so the <video> is visible; don't wait on metadata in some iframe contexts.
+        setCameraActive(true);
+
+        video.onloadedmetadata = () => {
+          setVideoDimensions({ width: video.videoWidth || 1280, height: video.videoHeight || 720 });
         };
-        
+
+        try {
+          await video.play();
+        } catch (e) {
+          // Autoplay can still be blocked in embedded previews; user gesture in a new tab usually resolves it.
+          console.warn("video.play() failed:", e);
+        }
+
+        setCameraLoading(false);
+
+        // Initialize pose model (client-side)
+        initializePose();
+
         setFacingMode(facing);
       }
     } catch (error: any) {
@@ -379,27 +388,28 @@ const Workout = () => {
             <div 
               ref={containerRef}
               className={cn(
-                "relative bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center overflow-hidden",
+                "relative bg-gradient-to-br from-background via-background to-muted flex items-center justify-center overflow-hidden",
                 isFullscreen ? "h-screen" : "aspect-[3/4] sm:aspect-video"
               )}
             >
+              {/* Video element must stay mounted so startCamera can attach stream while loading */}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={cn(
+                  "w-full h-full object-cover",
+                  isMirrored && "scale-x-[-1]",
+                  cameraActive ? "opacity-100" : "opacity-0"
+                )}
+              />
+
               {cameraActive ? (
                 <>
-                  {/* Video Feed */}
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className={cn(
-                      "w-full h-full object-cover",
-                      isMirrored && "scale-x-[-1]"
-                    )}
-                  />
-                  
                   {/* Alignment Grid */}
                   {showGrid && <AlignmentGrid showGrid={true} showFloorLine={true} />}
-                  
+
                   {/* Skeleton Overlay */}
                   <SkeletonOverlay
                     landmarks={landmarks}
@@ -422,14 +432,18 @@ const Workout = () => {
                         {fps} FPS
                       </div>
                     )}
-                    
+
                     {/* AI Status */}
-                    <div className={cn(
-                      "px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2",
-                      poseLoading ? "bg-warning/20 text-warning" :
-                      poseReady ? "bg-success/20 text-success" :
-                      "bg-muted text-muted-foreground"
-                    )}>
+                    <div
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2",
+                        poseLoading
+                          ? "bg-warning/20 text-warning"
+                          : poseReady
+                            ? "bg-success/20 text-success"
+                            : "bg-muted text-muted-foreground"
+                      )}
+                    >
                       {poseLoading ? (
                         <>
                           <Loader2 className="w-3 h-3 animate-spin" />
@@ -446,7 +460,7 @@ const Workout = () => {
                     </div>
                   </div>
 
-                  {/* Camera Controls - Bottom Right */}
+                  {/* Camera Controls - Top Center */}
                   <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-2">
                     <Button
                       size="icon"
@@ -512,7 +526,7 @@ const Workout = () => {
                     <FormFeedback
                       formScore={formScore}
                       feedback={feedback}
-                      repCount={selectedExercise === 'planks' ? plankHoldTime : repCount}
+                      repCount={selectedExercise === "planks" ? plankHoldTime : repCount}
                       exerciseName={getExerciseName()}
                       calories={calories}
                     />
@@ -525,10 +539,9 @@ const Workout = () => {
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-white font-semibold">{getExerciseName()}</span>
                           <span className="text-white/70 text-sm">
-                            {selectedExercise === 'planks' 
+                            {selectedExercise === "planks"
                               ? `${plankHoldTime}s / ${exerciseTarget}s`
-                              : `${repCount} / ${exerciseTarget}`
-                            }
+                              : `${repCount} / ${exerciseTarget}`}
                           </span>
                         </div>
                         <Progress value={getProgress()} className="h-3 bg-muted/40" />
@@ -579,81 +592,81 @@ const Workout = () => {
                   </div>
                 </>
               ) : (
-                <div className="text-center space-y-4 p-8">
-                  {cameraLoading ? (
-                    <>
-                      <div className="w-28 h-28 mx-auto bg-gradient-primary/20 rounded-full flex items-center justify-center animate-pulse">
-                        <Loader2 className="w-14 h-14 text-primary animate-spin" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-white text-xl">Initializing MirrorFit...</p>
-                        <p className="text-sm text-white/60 mt-2">
-                          Please allow camera access when prompted
-                        </p>
-                      </div>
-                    </>
-                  ) : cameraError ? (
-                    <>
-                      <div className="w-28 h-28 mx-auto bg-destructive/20 rounded-full flex items-center justify-center">
-                        <Camera className="w-14 h-14 text-destructive" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-white text-xl">Camera Error</p>
-                        <p className="text-sm text-white/60 max-w-xs mx-auto mt-2">
-                          {cameraError}
-                        </p>
-                      </div>
-                      <div className="flex flex-col gap-3 items-center">
-                        <Button onClick={() => startCamera()} className="bg-gradient-primary shadow-glow">
-                          <Camera className="w-4 h-4 mr-2" />
-                          Try Again
-                        </Button>
-                        <a 
-                          href={window.location.href} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-sm text-primary hover:underline"
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center space-y-4 p-8">
+                    {cameraLoading ? (
+                      <>
+                        <div className="w-28 h-28 mx-auto bg-gradient-primary/20 rounded-full flex items-center justify-center animate-pulse">
+                          <Loader2 className="w-14 h-14 text-primary animate-spin" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-white text-xl">Initializing MirrorFit...</p>
+                          <p className="text-sm text-white/60 mt-2">
+                            Please allow camera access when prompted
+                          </p>
+                        </div>
+                      </>
+                    ) : cameraError ? (
+                      <>
+                        <div className="w-28 h-28 mx-auto bg-destructive/20 rounded-full flex items-center justify-center">
+                          <Camera className="w-14 h-14 text-destructive" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-white text-xl">Camera Error</p>
+                          <p className="text-sm text-white/60 max-w-xs mx-auto mt-2">{cameraError}</p>
+                        </div>
+                        <div className="flex flex-col gap-3 items-center">
+                          <Button onClick={() => startCamera()} className="bg-gradient-primary shadow-glow">
+                            <Camera className="w-4 h-4 mr-2" />
+                            Try Again
+                          </Button>
+                          <a
+                            href={window.location.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-primary hover:underline"
+                          >
+                            Open in new tab for full experience →
+                          </a>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-32 h-32 mx-auto bg-gradient-primary/20 rounded-full flex items-center justify-center relative">
+                          <div className="absolute inset-0 bg-gradient-primary/10 rounded-full animate-ping" />
+                          <span className="text-6xl">🪞</span>
+                        </div>
+                        <div>
+                          <p className="font-bold text-white text-2xl">MirrorFit</p>
+                          <p className="text-sm text-white/60 mt-2">
+                            AI-powered workout mirror with real-time pose detection
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-2 max-w-md mx-auto mt-4">
+                          <Badge variant="outline" className="bg-white/10 text-white/80 border-white/20">
+                            🦴 Skeleton Tracking
+                          </Badge>
+                          <Badge variant="outline" className="bg-white/10 text-white/80 border-white/20">
+                            📊 Form Analysis
+                          </Badge>
+                          <Badge variant="outline" className="bg-white/10 text-white/80 border-white/20">
+                            🔢 Rep Counting
+                          </Badge>
+                          <Badge variant="outline" className="bg-white/10 text-white/80 border-white/20">
+                            🎯 Real-time Feedback
+                          </Badge>
+                        </div>
+                        <Button
+                          size="lg"
+                          onClick={() => startCamera()}
+                          className="bg-gradient-primary shadow-glow mt-4 px-8"
                         >
-                          Open in new tab for full experience →
-                        </a>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-32 h-32 mx-auto bg-gradient-primary/20 rounded-full flex items-center justify-center relative">
-                        <div className="absolute inset-0 bg-gradient-primary/10 rounded-full animate-ping" />
-                        <span className="text-6xl">🪞</span>
-                      </div>
-                      <div>
-                        <p className="font-bold text-white text-2xl">MirrorFit</p>
-                        <p className="text-sm text-white/60 mt-2">
-                          AI-powered workout mirror with real-time pose detection
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap justify-center gap-2 max-w-md mx-auto mt-4">
-                        <Badge variant="outline" className="bg-white/10 text-white/80 border-white/20">
-                          🦴 Skeleton Tracking
-                        </Badge>
-                        <Badge variant="outline" className="bg-white/10 text-white/80 border-white/20">
-                          📊 Form Analysis
-                        </Badge>
-                        <Badge variant="outline" className="bg-white/10 text-white/80 border-white/20">
-                          🔢 Rep Counting
-                        </Badge>
-                        <Badge variant="outline" className="bg-white/10 text-white/80 border-white/20">
-                          🎯 Real-time Feedback
-                        </Badge>
-                      </div>
-                      <Button 
-                        size="lg"
-                        onClick={() => startCamera()} 
-                        className="bg-gradient-primary shadow-glow mt-4 px-8"
-                      >
-                        <Camera className="w-5 h-5 mr-2" />
-                        Start MirrorFit
-                      </Button>
-                    </>
-                  )}
+                          <Camera className="w-5 h-5 mr-2" />
+                          Start MirrorFit
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
