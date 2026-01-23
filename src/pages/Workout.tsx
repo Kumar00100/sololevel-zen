@@ -74,7 +74,14 @@ const Workout = () => {
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
   
   // Pose detection hook
-  const { initializePose, isLoading: poseLoading, isReady: poseReady, error: poseError, fps } = usePoseDetection({
+  const { 
+    startCamera: startPoseCamera, 
+    stopCamera: stopPoseCamera,
+    isLoading: poseLoading, 
+    isReady: poseReady, 
+    error: poseError, 
+    fps 
+  } = usePoseDetection({
     onResults: useCallback((results) => {
       if (results.landmarks) {
         setLandmarks(results.landmarks);
@@ -255,11 +262,10 @@ const Workout = () => {
         }
 
         setCameraLoading(false);
-
-        // Initialize pose model (client-side)
-        initializePose();
-
         setFacingMode(facing);
+
+        // Start pose detection on the video element
+        startPoseCamera(video, facing);
       }
     } catch (error: any) {
       console.error("Error accessing camera:", error);
@@ -278,6 +284,7 @@ const Workout = () => {
   };
 
   const stopCamera = () => {
+    stopPoseCamera();
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
