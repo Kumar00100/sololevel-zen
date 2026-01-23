@@ -1,6 +1,4 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Pose, Results, POSE_CONNECTIONS } from '@mediapipe/pose';
-import { Camera } from '@mediapipe/camera_utils';
 
 export interface PoseLandmark {
   x: number;
@@ -59,6 +57,41 @@ export const POSE_LANDMARKS = {
   RIGHT_FOOT_INDEX: 32,
 } as const;
 
+// Pose connections for skeleton drawing
+export const POSE_CONNECTIONS: [number, number][] = [
+  [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+  [11, 23], [12, 24], [23, 24],
+  [23, 25], [25, 27], [24, 26], [26, 28],
+  [27, 29], [29, 31], [28, 30], [30, 32],
+  [0, 1], [1, 2], [2, 3], [3, 7],
+  [0, 4], [4, 5], [5, 6], [6, 8],
+];
+
+// Declare global types for dynamically loaded libraries
+declare global {
+  interface Window {
+    Pose: any;
+    Camera: any;
+  }
+}
+
+// Helper to load script dynamically
+const loadScript = (src: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.crossOrigin = 'anonymous';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+    document.head.appendChild(script);
+  });
+};
+
 export const usePoseDetection = (options: UsePoseDetectionOptions = {}) => {
   const {
     onResults,
@@ -68,22 +101,39 @@ export const usePoseDetection = (options: UsePoseDetectionOptions = {}) => {
     minTrackingConfidence = 0.5,
   } = options;
 
-  const poseRef = useRef<Pose | null>(null);
-  const cameraRef = useRef<Camera | null>(null);
+  const poseRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fps, setFps] = useState(0);
   const lastTimeRef = useRef(performance.now());
   const frameCountRef = useRef(0);
+  const onResultsRef = useRef(onResults);
+
+  // Keep onResults ref updated
+  useEffect(() => {
+    onResultsRef.current = onResults;
+  }, [onResults]);
 
   const initializePose = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const pose = new Pose({
-        locateFile: (file) => {
+      // Load MediaPipe scripts dynamically
+      await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js');
+      await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js');
+
+      // Wait for libraries to be available
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      if (!window.Pose) {
+        throw new Error('MediaPipe Pose library failed to load');
+      }
+
+      const pose = new window.Pose({
+        locateFile: (file: string) => {
           return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
         },
       });
@@ -97,7 +147,7 @@ export const usePoseDetection = (options: UsePoseDetectionOptions = {}) => {
         minTrackingConfidence,
       });
 
-      pose.onResults((results: Results) => {
+      pose.onResults((results: any) => {
         // Calculate FPS
         frameCountRef.current++;
         const now = performance.now();
@@ -108,8 +158,8 @@ export const usePoseDetection = (options: UsePoseDetectionOptions = {}) => {
           lastTimeRef.current = now;
         }
 
-        if (onResults) {
-          onResults({
+        if (onResultsRef.current) {
+          onResultsRef.current({
             landmarks: results.poseLandmarks || null,
             worldLandmarks: results.poseWorldLandmarks || null,
           });
@@ -120,24 +170,38 @@ export const usePoseDetection = (options: UsePoseDetectionOptions = {}) => {
       poseRef.current = pose;
       setIsReady(true);
       setIsLoading(false);
+      console.log('MediaPipe Pose initialized successfully');
     } catch (err) {
       console.error('Failed to initialize pose detection:', err);
       setError('Failed to load AI model. Please refresh and try again.');
       setIsLoading(false);
     }
-  }, [modelComplexity, smoothLandmarks, minDetectionConfidence, minTrackingConfidence, onResults]);
+  }, [modelComplexity, smoothLandmarks, minDetectionConfidence, minTrackingConfidence]);
 
   const startCamera = useCallback(async (videoElement: HTMLVideoElement, facingMode: 'user' | 'environment' = 'user') => {
     if (!poseRef.current) {
       await initializePose();
     }
 
-    if (!poseRef.current) return;
+    if (!poseRef.current) {
+      console.error('Pose model not ready');
+      return;
+    }
 
     try {
-      const camera = new Camera(videoElement, {
+      // Ensure camera utils is loaded
+      if (!window.Camera) {
+        await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js');
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      if (!window.Camera) {
+        throw new Error('Camera utils failed to load');
+      }
+
+      const camera = new window.Camera(videoElement, {
         onFrame: async () => {
-          if (poseRef.current) {
+          if (poseRef.current && videoElement.readyState >= 2) {
             await poseRef.current.send({ image: videoElement });
           }
         },
@@ -148,6 +212,7 @@ export const usePoseDetection = (options: UsePoseDetectionOptions = {}) => {
 
       await camera.start();
       cameraRef.current = camera;
+      console.log('Camera started with pose detection');
     } catch (err) {
       console.error('Failed to start camera:', err);
       setError('Failed to access camera. Please allow camera permissions.');
