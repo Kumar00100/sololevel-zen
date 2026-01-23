@@ -213,31 +213,63 @@ export const detectJumpingJack = (
 ): { phase: 'up' | 'down' | 'neutral'; isRep: boolean; formScore: number; feedback: string[] } => {
   const leftWrist = landmarks[POSE_LANDMARKS.LEFT_WRIST];
   const rightWrist = landmarks[POSE_LANDMARKS.RIGHT_WRIST];
+  const leftElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
+  const rightElbow = landmarks[POSE_LANDMARKS.RIGHT_ELBOW];
   const leftShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
   const rightShoulder = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
+  const leftHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
+  const rightHip = landmarks[POSE_LANDMARKS.RIGHT_HIP];
   const leftAnkle = landmarks[POSE_LANDMARKS.LEFT_ANKLE];
   const rightAnkle = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
   
-  // Check arm position
-  const armsUp = leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y;
+  // Check arm position - arms are up when wrists/elbows are above shoulders
+  // In normalized coordinates, lower y = higher on screen
+  const leftArmUp = leftWrist.y < leftShoulder.y || leftElbow.y < leftShoulder.y;
+  const rightArmUp = rightWrist.y < rightShoulder.y || rightElbow.y < rightShoulder.y;
+  const armsUp = leftArmUp && rightArmUp;
   
-  // Check leg spread
+  // Check leg spread - compare ankle distance to hip distance
   const legSpread = getDistance(leftAnkle, rightAnkle);
+  const hipWidth = getDistance(leftHip, rightHip);
   const shoulderWidth = getDistance(leftShoulder, rightShoulder);
-  const legsApart = legSpread > shoulderWidth * 1.5;
+  
+  // Legs apart when spread is greater than 1.2x hip width (more lenient)
+  const legsApart = legSpread > hipWidth * 1.2;
+  // Legs together when spread is less than 1.0x shoulder width
+  const legsTogether = legSpread < shoulderWidth * 1.1;
+  
+  // Arms down when both wrists are below shoulders
+  const armsDown = leftWrist.y > leftShoulder.y && rightWrist.y > rightShoulder.y;
   
   const feedback: string[] = [];
   let formScore = 100;
   
-  let phase: 'up' | 'down' | 'neutral' = 'neutral';
+  // Provide real-time feedback
+  if (armsUp && !legsApart) {
+    feedback.push("Spread your legs wider!");
+    formScore -= 10;
+  } else if (legsApart && !armsUp) {
+    feedback.push("Raise your arms higher!");
+    formScore -= 10;
+  } else if (armsUp && legsApart) {
+    feedback.push("Great form! Keep going!");
+  }
+  
+  let phase: 'up' | 'down' | 'neutral' = prevPhase;
   let isRep = false;
   
+  // "Up" phase: arms raised AND legs spread
   if (armsUp && legsApart) {
     phase = 'up';
-  } else if (!armsUp && !legsApart) {
+  } 
+  // "Down" phase: arms down AND legs together
+  else if (armsDown && legsTogether) {
     phase = 'down';
+    // Count rep when transitioning from up to down
     if (prevPhase === 'up') {
       isRep = true;
+      feedback.length = 0;
+      feedback.push("Rep counted! Keep it up!");
     }
   }
   
