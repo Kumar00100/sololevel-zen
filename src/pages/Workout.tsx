@@ -11,6 +11,7 @@ import { usePoseDetection, PoseLandmark, POSE_LANDMARKS } from "@/hooks/usePoseD
 import { SkeletonOverlay } from "@/components/workout/SkeletonOverlay";
 import { FormFeedback } from "@/components/workout/FormFeedback";
 import { WorkoutModeSelector } from "@/components/workout/WorkoutModeSelector";
+import { WorkoutSelectionDialog } from "@/components/workout/WorkoutSelectionDialog";
 import { AlignmentGrid } from "@/components/workout/AlignmentGrid";
 import { 
   ExerciseType, 
@@ -44,6 +45,8 @@ const Workout = () => {
   // Workout states
   const [isTracking, setIsTracking] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState<ExerciseType | null>(null);
+  const [dialogExercise, setDialogExercise] = useState<ExerciseType | null>(null);
+  const [showDialog, setShowDialog] = useState(false);
   const [exerciseTarget, setExerciseTarget] = useState(20);
   const [timer, setTimer] = useState(0);
   const [repCount, setRepCount] = useState(0);
@@ -334,7 +337,12 @@ const Workout = () => {
     prevLandmarksRef.current = null;
   };
 
-  const selectExercise = (exercise: ExerciseType, target: number) => {
+  const openWorkoutDialog = (exercise: ExerciseType) => {
+    setDialogExercise(exercise);
+    setShowDialog(true);
+  };
+
+  const startWorkout = (exercise: ExerciseType, target: number) => {
     setSelectedExercise(exercise);
     setExerciseTarget(target);
     resetWorkout();
@@ -693,7 +701,7 @@ const Workout = () => {
               <CardContent>
                 <WorkoutModeSelector
                   selectedMode={selectedExercise}
-                  onSelectMode={selectExercise}
+                  onSelectMode={openWorkoutDialog}
                 />
               </CardContent>
             </Card>
@@ -735,6 +743,14 @@ const Workout = () => {
           </>
         )}
       </div>
+
+      {/* Workout Selection Dialog */}
+      <WorkoutSelectionDialog
+        open={showDialog}
+        onOpenChange={setShowDialog}
+        selectedWorkout={dialogExercise}
+        onStartWorkout={startWorkout}
+      />
 
       {!isFullscreen && (
         <>

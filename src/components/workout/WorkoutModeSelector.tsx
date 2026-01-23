@@ -51,7 +51,7 @@ const WORKOUT_MODES: WorkoutMode[] = [
 
 interface WorkoutModeSelectorProps {
   selectedMode: ExerciseType | null;
-  onSelectMode: (mode: ExerciseType, target: number) => void;
+  onSelectMode: (mode: ExerciseType) => void;
 }
 
 export const WorkoutModeSelector = memo(({ selectedMode, onSelectMode }: WorkoutModeSelectorProps) => {
@@ -60,9 +60,9 @@ export const WorkoutModeSelector = memo(({ selectedMode, onSelectMode }: Workout
       {WORKOUT_MODES.map((mode) => (
         <button
           key={mode.id}
-          onClick={() => onSelectMode(mode.id, mode.target)}
+          onClick={() => onSelectMode(mode.id)}
           className={cn(
-            "relative p-4 rounded-2xl border-2 transition-all duration-300 text-left group",
+            "relative p-4 rounded-2xl border-2 transition-all duration-300 text-left group hover:scale-[1.02] active:scale-[0.98]",
             selectedMode === mode.id
               ? "border-primary bg-gradient-to-br from-primary/20 to-secondary/20 shadow-glow"
               : "border-border bg-card hover:border-primary/50 hover:bg-card/80"
