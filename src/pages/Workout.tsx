@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Camera, Play, Pause, RotateCcw, Timer, Trophy, FlipHorizontal2, Maximize2, Minimize2, Volume2, VolumeX, Grid3X3, Mic, MicOff, Loader2, Zap, ChevronLeft } from "lucide-react";
+import { Camera, Play, Pause, RotateCcw, Timer, Trophy, FlipHorizontal2, Maximize2, Minimize2, Volume2, VolumeX, Grid3X3, Mic, MicOff, Loader2, Zap, ChevronLeft, Speech } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import CircularMenu from "@/components/CircularMenu";
 import BottomNav from "@/components/BottomNav";
 import { usePoseDetection, PoseLandmark, POSE_LANDMARKS } from "@/hooks/usePoseDetection";
+import { useAudioCoaching } from "@/hooks/useAudioCoaching";
 import { SkeletonOverlay } from "@/components/workout/SkeletonOverlay";
 import { FormFeedback } from "@/components/workout/FormFeedback";
 import { WorkoutModeSelector } from "@/components/workout/WorkoutModeSelector";
@@ -60,6 +61,7 @@ const Workout = () => {
   // Audio/Voice states
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [audioCoachingEnabled, setAudioCoachingEnabled] = useState(true);
   
   // Pose detection states
   const [landmarks, setLandmarks] = useState<PoseLandmark[] | null>(null);
@@ -94,6 +96,13 @@ const Workout = () => {
     smoothLandmarks: true,
   });
 
+  // Audio coaching hook
+  const audioCoaching = useAudioCoaching({
+    enabled: audioCoachingEnabled,
+    rate: 1.15,
+    pitch: 1.0,
+  });
+
   // Timer effect
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -104,6 +113,24 @@ const Workout = () => {
     }
     return () => clearInterval(interval);
   }, [isTracking]);
+
+  // Workout completion effect
+  useEffect(() => {
+    if (!isTracking || !selectedExercise) return;
+    
+    const isComplete = selectedExercise === 'planks' 
+      ? plankHoldTime >= exerciseTarget 
+      : repCount >= exerciseTarget;
+    
+    if (isComplete && exerciseTarget > 0) {
+      audioCoaching.announceWorkoutComplete(
+        selectedExercise === 'planks' ? plankHoldTime : repCount,
+        getExerciseName()
+      );
+      // Optionally pause tracking on completion
+      setIsTracking(false);
+    }
+  }, [repCount, plankHoldTime, exerciseTarget, selectedExercise, isTracking, audioCoaching]);
 
   // Exercise detection effect
   useEffect(() => {
@@ -126,8 +153,15 @@ const Workout = () => {
         setFormScore(plankResult.formScore);
         setFeedback(plankResult.feedback);
         if (plankResult.isHolding) {
-          setPlankHoldTime(prev => prev + 1);
+          setPlankHoldTime(prev => {
+            const newTime = prev + 1;
+            // Announce plank milestones
+            audioCoaching.announcePlankTime(newTime);
+            return newTime;
+          });
         }
+        // Announce form corrections for plank
+        audioCoaching.announceFormCorrection(plankResult.feedback);
         return;
       case 'jumpingJacks':
         result = detectJumpingJack(landmarks, exercisePhase);
@@ -141,6 +175,9 @@ const Workout = () => {
       setFormScore(result.formScore);
       setFeedback(result.feedback);
       
+      // Announce form corrections
+      audioCoaching.announceFormCorrection(result.feedback);
+      
       if (result.isRep) {
         setRepCount(prev => {
           const newCount = prev + 1;
@@ -148,6 +185,8 @@ const Workout = () => {
           if (soundEnabled && audioRef.current) {
             playBeep(440, 100);
           }
+          // Announce rep count with audio coaching
+          audioCoaching.announceRepCount(newCount, getExerciseName());
           // Award XP based on form
           const xpEarned = Math.round(result.formScore / 20);
           setTotalXP(xp => xp + xpEarned);
@@ -160,7 +199,7 @@ const Workout = () => {
     const caloriesBurned = estimateCalories(landmarks, prevLandmarksRef.current, 1);
     setCalories(prev => prev + caloriesBurned);
     prevLandmarksRef.current = landmarks;
-  }, [landmarks, isTracking, selectedExercise, exercisePhase, soundEnabled]);
+  }, [landmarks, isTracking, selectedExercise, exercisePhase, soundEnabled, audioCoaching]);
 
   // Initialize audio context
   useEffect(() => {
@@ -322,7 +361,12 @@ const Workout = () => {
 
   const toggleTracking = () => {
     if (!selectedExercise) return;
-    setIsTracking(!isTracking);
+    const newTrackingState = !isTracking;
+    setIsTracking(newTrackingState);
+    
+    if (!newTrackingState) {
+      audioCoaching.announceWorkoutPause();
+    }
   };
 
   const resetWorkout = () => {
@@ -335,6 +379,7 @@ const Workout = () => {
     setExercisePhase('neutral');
     setIsTracking(false);
     prevLandmarksRef.current = null;
+    audioCoaching.reset();
   };
 
   const openWorkoutDialog = (exercise: ExerciseType) => {
@@ -346,6 +391,17 @@ const Workout = () => {
     setSelectedExercise(exercise);
     setExerciseTarget(target);
     resetWorkout();
+    // Announce workout start after a short delay
+    const exerciseNames: Record<ExerciseType, string> = {
+      squats: 'Squats',
+      pushups: 'Push-ups',
+      lunges: 'Lunges',
+      planks: 'Plank',
+      jumpingJacks: 'Jumping Jacks',
+    };
+    setTimeout(() => {
+      audioCoaching.announceWorkoutStart(exerciseNames[exercise], target);
+    }, 500);
   };
 
   const formatTime = (seconds: number) => {
@@ -514,6 +570,18 @@ const Workout = () => {
                       onClick={() => setSoundEnabled(!soundEnabled)}
                     >
                       {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className={cn(
+                        "w-10 h-10 backdrop-blur-sm rounded-xl",
+                        audioCoachingEnabled ? "bg-success/60 text-white" : "bg-black/60 text-white hover:bg-black/80"
+                      )}
+                      onClick={() => setAudioCoachingEnabled(!audioCoachingEnabled)}
+                      title="Audio Coach"
+                    >
+                      <Speech className="w-5 h-5" />
                     </Button>
                     <Button
                       size="icon"
@@ -725,6 +793,18 @@ const Workout = () => {
                 <div className="text-xs text-muted-foreground">XP</div>
               </Card>
             </div>
+
+            {/* Audio Coaching Help */}
+            {audioCoachingEnabled && (
+              <Card className="bg-success/10 border-success/30">
+                <CardContent className="p-4">
+                  <p className="text-sm text-success font-medium mb-2">🔊 Audio Coach Active</p>
+                  <p className="text-xs text-muted-foreground">
+                    Voice announcements for rep counts, form corrections, and workout milestones
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Voice Commands Help */}
             {voiceEnabled && (
